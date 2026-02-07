@@ -1,0 +1,15 @@
+{
+  "name": "autoclaw",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AutoClaw provisioning dashboard (OpenClaw installer + config UI)",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "zod": "^3.23.8"
+  }
+}

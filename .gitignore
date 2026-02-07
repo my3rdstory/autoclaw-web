@@ -1,0 +1,7 @@
+node_modules/
+sh/state/
+sh/state/runs/
+sh/state/*.json
+sh/state/*.log
+*.log
+.DS_Store

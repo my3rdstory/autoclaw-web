@@ -1,0 +1,1630 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>오토클로 (autoclaw)</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <meta name="theme-color" content="#0b0f17" />
+  <style>
+    :root {
+      --bg:#0b0f17; --panel:#111827; --panel2:#0f172a; --text:#e5e7eb; --muted:#9ca3af;
+      --accent:#60a5fa; --danger:#f87171; --ok:#34d399; --line:rgba(255,255,255,0.08);
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); overflow: hidden; }
+    .top { padding: 16px 20px; border-bottom: 1px solid var(--line); background: rgba(17,24,39,0.6); backdrop-filter: blur(8px); position: sticky; top:0; z-index:10; }
+    .brand { display:flex; align-items:baseline; gap:10px; }
+    h1 { margin:0; font-size:18px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+    .layout { display:grid; grid-template-columns: 320px minmax(0, 1fr) minmax(0, 1fr); height: calc(100vh - 68px); }
+    .left { border-right: 1px solid var(--line); padding: 14px; overflow: auto; }
+    .mid { border-right: 1px solid var(--line); padding: 14px; overflow: auto; }
+    .right { padding: 14px; overflow: hidden; display:flex; flex-direction:column; gap: 12px; }
+
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    .card + .card { margin-top: 12px; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .pill { display:inline-flex; align-items:center; gap:8px; font-size: 12px; color: var(--muted); }
+    .dot { width:10px; height:10px; border-radius: 999px; background: #6b7280; }
+    .dot.ok { background: var(--ok); }
+    .dot.err { background: var(--danger); }
+    .dot.run { background: var(--accent); }
+
+    .steps { display:flex; flex-direction:column; gap:8px; }
+    .step { display:flex; justify-content:space-between; align-items:center; padding:10px 10px; border:1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 12px; cursor:pointer; }
+    .step:hover { background: rgba(255,255,255,0.05); }
+    .step.active { border-color: rgba(96,165,250,0.45); background: rgba(96,165,250,0.08); }
+    .step.doneStep { border-color: rgba(52,211,153,0.55); background: rgba(52,211,153,0.10); }
+    .step.doneStep .name { font-weight: 800; }
+    .step .name { font-size: 13px; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+    .badge.done { border-color: rgba(52,211,153,0.45); color: #a7f3d0; }
+    .badge.todo { border-color: rgba(156,163,175,0.35); }
+
+    button { background: rgba(96,165,250,0.12); color: var(--text); border: 1px solid rgba(96,165,250,0.35); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+    button:hover { background: rgba(96,165,250,0.18); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.danger { border-color: rgba(248,113,113,0.45); background: rgba(248,113,113,0.10); }
+    button.active { background: rgba(96,165,250,0.26); border-color: rgba(96,165,250,0.75); font-weight: 700; }
+
+    input, textarea { width:100%; box-sizing:border-box; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid rgba(255,255,255,0.10); padding: 10px 12px; border-radius: 10px; }
+    label { display:block; margin: 10px 0 6px; color: var(--muted); font-size: 13px; }
+
+    pre {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 12px;
+      max-width: 100%;
+
+      /* Right column owns the height; pre just fills remaining space */
+      overflow: auto;
+
+      /* 긴 한 줄 로그 때문에 가로 스크롤 생기는 걸 최대한 방지 */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .logCard { display:flex; flex-direction:column; min-height: 0; flex: 1; }
+    .logPre { flex: 1; min-height: 0; }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="top" id="topbar">
+    <div class="row" style="justify-content:space-between">
+      <div class="brand">
+        <img src="/assets/autoclaw-symbol.png" alt="autoclaw" style="width:22px;height:22px;border-radius:6px;object-fit:cover" />
+        <h1 id="brandTitle">오토클로 <span class="mono">autoclaw</span></h1>
+        <div class="pill"><span id="statusDot" class="dot"></span><span id="statusText">상태 확인 중…</span></div>
+      </div>
+      <div class="row" style="gap:8px">
+        <button id="btnReset" style="padding:8px 10px">다시 진단하기</button>
+        <button id="topLangKo" style="padding:8px 10px">KO</button>
+        <button id="topLangEn" style="padding:8px 10px">EN</button>
+      </div>
+    </div>
+    <div id="topSub" class="sub">왼쪽은 전체 단계, 오른쪽은 현재 단계의 입력/실행/상세 로그. (기본 타겟: Ubuntu/Debian (VPS 또는 WSL+systemd))</div>
+  </div>
+
+  <div id="authGate" style="display:none; padding: 18px;">
+    <div style="max-width:720px; margin: 0 auto;">
+      <div class="card">
+        <div style="font-weight:800; font-size:16px; margin-bottom:8px">접속 인증 필요</div>
+        <div id="authIntro" class="muted" style="margin-bottom:12px"></div>
+
+        <div class="row" style="justify-content:space-between; gap:12px">
+          <div class="row" style="gap:8px; align-items:center">
+            <div id="langLabel" class="muted">언어</div>
+            <button id="btnLangKo" style="padding:8px 10px">KO</button>
+            <button id="btnLangEn" style="padding:8px 10px">EN</button>
+          </div>
+          <button id="btnBootstrap">인증번호 생성</button>
+        </div>
+        <div class="muted" style="margin-top:10px" id="bootstrapHint"></div>
+
+        <div id="bootstrapBox" class="card" style="display:none; background:var(--panel2); margin-top:12px">
+          <div id="bootstrapBoxTitle" style="font-weight:700; margin-bottom:8px">인증번호(한 번만 표시됩니다)</div>
+          <pre id="bootstrapCode" class="mono" style="margin:0; font-size:18px; letter-spacing:0.5px; user-select: all; padding:12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;"></pre>
+          <div id="bootstrapBoxHint" class="muted" style="margin-top:8px">마우스로 드래그(또는 길게 눌러) 선택한 뒤 복사해 주세요. 반드시 안전한 곳에 기록해 두셔야 합니다.</div>
+        </div>
+
+        <div class="card" style="background:var(--panel2); margin-top:12px">
+          <div id="authLoginTitle" style="font-weight:700; margin-bottom:8px">로그인</div>
+          <input id="loginCode" placeholder="인증번호 붙여넣기" />
+          <div class="row" style="margin-top:10px">
+            <button id="btnLogin">로그인</button>
+          </div>
+          <div id="authMsg" class="muted" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout" id="mainLayout">
+    <!-- 1단: 왼쪽(단계 목록) -->
+    <div class="left">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div class="pill"><span id="pillClient" class="mono">client</span> <span id="clientIp">-</span></div>
+          <div class="pill"><span id="pillMode" class="mono">mode</span> <span id="envMode">-</span></div>
+        </div>
+        <div class="muted" style="margin-top:10px" id="envHint">환경 감지 중…</div>
+      </div>
+
+      <div class="card">
+        <div id="wizardTitle" style="font-weight:600; margin-bottom:10px">설치 마법사 단계</div>
+        <div class="steps" id="steps"></div>
+      </div>
+    </div>
+
+    <!-- 2단: 가운데(단계 설명/입력/실행) -->
+    <div class="mid">
+      <div class="card" id="panel">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <div id="panelTitle" style="font-weight:700">-</div>
+            <div id="panelDesc" class="muted" style="margin-top:6px">-</div>
+          </div>
+          <div class="pill mono"><span id="jobIdLabel">job id:</span> <span id="jobId">-</span></div>
+        </div>
+        <div id="panelBody" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- 3단: 오른쪽(로그 전용) -->
+    <div class="right">
+      <div class="card logCard">
+        <div class="row" style="justify-content:space-between">
+          <div id="logTitle" style="font-weight:700">진행 로그(상세)</div>
+          <div class="row">
+            <button id="btnCopyLog" style="padding:8px 10px">로그 전체 복사</button>
+            <div class="pill mono"><span id="streamLabel">stream:</span> <span id="streamState">idle</span></div>
+          </div>
+        </div>
+        <div id="copyHint" class="muted" style="margin-top:8px; display:none"></div>
+        <pre id="log" class="mono logPre">(여기에 로그가 뜬다)</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // i18n (minimal, KO default / EN for non-Korean browsers)
+    const I18N = {
+      ko: {
+        authTitle: '접속 인증 필요',
+        authBtnBootstrap: '인증번호 생성',
+        authLoginTitle: '로그인',
+        authLoginBtn: '로그인',
+        authLoginPh: '인증번호 붙여넣기',
+        langLabel: '언어',
+
+        // top bar / common
+        statusChecking: '상태 확인 중…',
+        statusIdle: '대기 중',
+        statusRunningPrefix: '실행 중: ',
+        statusDonePrefix: '완료: ',
+        statusFailPrefix: '실패: ',
+        btnReset: '다시 진단하기',
+        topSub: '왼쪽은 전체 단계, 오른쪽은 현재 단계의 입력/실행/상세 로그. (기본 타겟: Ubuntu/Debian (VPS 또는 WSL+systemd))',
+        logTitle: '진행 로그(상세)',
+        btnCopyLog: '로그 전체 복사',
+
+        appTitle: '오토클로 (autoclaw)',
+        brandTitleHtml: '오토클로 <span class="mono">autoclaw</span>',
+        wizardTitle: '설치 마법사 단계',
+        logPlaceholder: '(여기에 로그가 뜬다)',
+        bootstrapBoxTitle: '인증번호(한 번만 표시됩니다)',
+        bootstrapBoxHint: '마우스로 드래그(또는 길게 눌러) 선택한 뒤 복사해 주세요. 반드시 안전한 곳에 기록해 두셔야 합니다.',
+
+        pillClient: 'client',
+        pillMode: 'mode',
+        jobIdLabel: 'job id:',
+        streamLabel: 'stream:',
+        streamIdle: 'idle',
+        streamLive: 'live',
+        streamError: 'error',
+
+        stepBadgeDone: '완료',
+        stepBadgeTodo: '대기',
+
+        bootstrapHintBootstrapped: '이미 인증번호가 발급된 서버입니다. 인증번호를 입력해 로그인해 주세요. (분실 시: SSH → 설치 경로의 sh/state/auth.json 삭제 후 재발급)',
+        bootstrapHintNotBootstrapped: '인증번호는 한 번만 표시됩니다. 반드시 기록해 주세요.',
+        authAlreadyBootstrappedMsg: '이미 인증번호가 발급된 서버입니다. 인증번호를 입력해서 로그인해 주세요. (분실 시: SSH → 설치 경로의 sh/state/auth.json 삭제 후 재발급)',
+        authBootstrapFailPrefix: '생성에 실패했습니다: ',
+        authBootstrapRecordNotice: '인증번호를 반드시 기록해 주세요.',
+
+        authIntroHtml: '이 대시보드는 외부에서 접근될 수 있으므로, 먼저 인증번호(24자)를 발급받아 안전하게 기록하신 뒤 로그인해 주세요.<br>인증번호를 잊으시면 복구가 어렵습니다.<br>(복구: 서버에서 <span class="mono">sh/state/auth.json</span> 삭제 후 재접속 → 인증번호 재발급)',
+
+        // steps
+        step_doctor_name: '1. 진단(doctor)',
+        step_doctor_desc: 'OS/필수 명령 존재 여부를 점검한다. 실패해도 진행 가능하지만, 문제를 미리 드러낸다.',
+        step_prereqs_name: '2. 기본 패키지',
+        step_prereqs_desc: 'curl/git/jq/lsof 등 필수+운영 패키지를 설치한다(이미 있으면 스킵).',
+        step_swap_name: '3. 스왑 설정(권장)',
+        step_swap_desc: 'RAM 1GB 환경에서 OOM을 막기 위해 swapfile(기본 2GB)을 설정한다. 이미 있으면 스킵.',
+        step_node_pnpm_name: '4. Node+pnpm',
+        step_node_pnpm_desc: 'NodeSource LTS 기반으로 node>=20, pnpm>=9 조건을 만족시키고, 이미 충족이면 스킵한다.',
+        step_install_openclaw_cli_name: '5. OpenClaw 설치',
+        step_install_openclaw_cli_desc: 'npm i -g openclaw로 OpenClaw CLI를 설치한다(이미 있으면 스킵).',
+        step_write_config_name: '6. openclaw.json',
+        step_write_config_desc: 'secrets.json(대시보드 입력) 기반으로 ~/.openclaw/openclaw.json 생성/백업/패치한다.',
+        step_start_gateway_name: '7. gateway 서비스',
+        step_start_gateway_desc: 'gateway 서비스를 install/start하고 status로 확인한다.',
+        step_provider_setup_name: '8. 제공자/모델/API Key',
+        step_provider_setup_desc: 'OpenAI/Claude/Gemini 중 하나를 선택하고 모델과 API Key를 설정한다.',
+        step_channels_setup_name: '9. 채널 설정',
+        step_channels_setup_desc: '입력한 텔레그램 토큰만 자동으로 설정한다(텔레그램은 allowFrom 필수).',
+        step_start_node_name: '10. node 서비스',
+        step_start_node_desc: 'node 서비스를 install/restart하고 nodes status로 확인한다.',
+        step_done_name: '설치 완료',
+        step_done_desc: '설치가 완료되었으니, 텔레그램을 활용해 오픈클로와 대화하며 자유롭게 활용하세요.',
+
+        // misc UI
+        btnRunStep: '이 단계 실행',
+        runHint: '실행하면 아래 로그에 상세 진행이 표시된다.',
+        envDetecting: '환경 감지 중…',
+        envHintVps: 'Ubuntu VPS(systemd) 기준으로 진행한다.',
+        envHintWsl: 'WSL로 감지됨. 이 마법사는 VPS와 동일한 절차로 끝까지 진행한다. (접속: Windows에서 http://localhost:8787 권장)',
+        envHintNoSystemdAppend: ' systemd가 감지되지 않음(서비스 설치 단계에서 제약 가능).',
+        envHintLowRamNoSwapAppend: ' (경고: RAM이 작고 swap이 없어 OOM이 날 수 있음 → 3단계 스왑 설정 권장)',
+
+
+        // panel: write_config
+        gatewayTokenTitle: 'Gateway Token',
+        gatewayTokenDesc: '대시보드/도구가 OpenClaw Gateway에 접근할 때 사용하는 토큰입니다.',
+        gatewayTokenLabel: 'OpenClaw Gateway Token',
+        gatewayTokenPh: '자동 생성됨',
+        tokenShow: '토큰 보기',
+        tokenEdit: '직접 수정',
+        gatewayTokenAutoApplyHintHtml: '지금 자동 생성된 토큰은 <span class="mono">openclaw.json 생성/패치 실행</span> 버튼을 클릭하면 시스템에 적용됩니다.',
+        openclawJsonPatchBtn: 'openclaw.json 생성/패치 실행',
+
+        providerPickTitle: '제공자 선택',
+        providerPickHint: '드롭다운 없이 선택 → 다음 선택지가 나타납니다.',
+        providerOther: '기타',
+        providerNeedPick: '위에서 제공자를 먼저 선택해 주세요.',
+        providerCatalogLoading: '모델 카탈로그를 불러오는 중…',
+        providerCatalogFail: '모델 카탈로그를 불러오지 못했습니다. (네트워크/서버 로그 확인)',
+        providerOtherTitle: '기타 제공자',
+        providerOtherNotSupported: '아직 대시보드에서 자동 설정을 지원하지 않습니다.',
+        providerOtherDocsHint: '자세한 내용은 GitHub/문서를 참고해 주세요.',
+        providerModelsFromCliHint: '(8단계 진입 시점) OpenClaw CLI에서 읽어온 모델 목록입니다.',
+        modelPickTitle: '모델 선택',
+        apiKeyTitle: 'API Key',
+        apiKeyPh: 'API Key',
+        savedKeyHint: '저장된 키가 있습니다. 기본은 마스킹 표시이며, “토큰 보기/직접 수정”으로 확인/수정할 수 있습니다.',
+        savedTokenHint: '저장된 토큰이 있습니다. 기본은 마스킹 표시이며, “토큰 보기/직접 수정”으로 확인/수정할 수 있습니다.',
+        savedIdHint: '저장된 값이 있습니다. 기본은 마스킹 표시이며, “토큰 보기/직접 수정”으로 확인/수정할 수 있습니다.',
+        providerCatalogLoadingFirst: '모델 카탈로그를 먼저 불러오는 중…',
+        noModelsOpenai: '(openai) 모델이 없습니다.',
+        noModelsAnthropic: '(anthropic) 모델이 없습니다.',
+        noModelsGoogle: '(google) 모델이 없습니다.',
+
+        btnSave: '저장',
+        btnApplyPatch: '설정 적용(패치 실행)',
+        btnTestLive: '테스트(실통신)',
+        testNeedFill: '제공자/모델/API Key를 먼저 채워 주세요.',
+        testRunning: '테스트 중…',
+        testOk: '테스트 통과 ✅ (이제 설정 적용 버튼이 활성화됩니다)',
+        testFailPrefix: '테스트 실패: ',
+
+        channelsTitle: '채널 설정',
+        channelsHint: '토큰을 입력한 채널만 설정합니다.',
+        telegramTitle: 'Telegram',
+        telegramTokenLabel: 'Telegram Bot Token',
+        telegramAllowFromLabel: 'Telegram 사용자 ID (allowFrom / 페어링 숫자)',
+        telegramAllowFromHelpHtml: '**숫자만** 입력하세요(공백/문자/(@아이디) 불가). 텔레그램에서 본인 계정의 숫자 ID를 검색해서 확인한 뒤 입력해 주세요. (예: <span class="mono">@userinfobot</span>)',
+        telegramAllowFromPh: '예: 28415764',
+        telegramTokenPh: '123:ABC...',
+        telegramAllowFromRequiredHint: '토큰을 넣었다면 위 숫자 ID(allowFrom)는 필수입니다.',
+        channelsApplyBtn: '채널 설정 적용(패치 실행)',
+        channelsSaveOk: '저장되었습니다.',
+
+        copyOk: '복사 완료',
+        copyFail: '복사 실패: 브라우저 권한/환경을 확인',
+
+        saveFailPrefix: '저장에 실패했습니다: ',
+        saveTmpOk: '저장되었습니다. (서버 로컬에 임시 저장)',
+
+        runFailPrefix: '실행 실패: ',
+
+        resetConfirm: '진단(1단계)만 다시 실행할 수 있게 초기화할까?\n\n- 보안 설정은 그대로 유지\n- OpenClaw 설치/설정은 건드리지 않음',
+        resetFail: '초기화 실패',
+        resetOk: '진단 다시 실행 준비 완료',
+
+        authNeedCode: '인증번호를 입력해 주세요.',
+        authCodeTooShort: '인증번호 길이가 올바르지 않습니다. (예: 24자)',
+        authCodeWrong: '인증번호가 올바르지 않습니다.',
+        authNotBootstrapped: '아직 인증번호가 생성되지 않았습니다. 먼저 “인증번호 생성”을 눌러 주세요.',
+        authLoginFail: '로그인에 실패했습니다. 인증번호를 확인해 주세요.',
+        authLoginOk: '로그인되었습니다.',
+      },
+      en: {
+        authTitle: 'Authentication required',
+        authBtnBootstrap: 'Generate access code',
+        authLoginTitle: 'Sign in',
+        authLoginBtn: 'Sign in',
+        authLoginPh: 'Paste access code',
+        langLabel: 'Language',
+
+        // top bar / common
+        statusChecking: 'Checking status…',
+        statusIdle: 'Idle',
+        statusRunningPrefix: 'Running: ',
+        statusDonePrefix: 'Done: ',
+        statusFailPrefix: 'Failed: ',
+        btnReset: 'Run diagnosis again',
+        topSub: 'Left: overall steps. Right: inputs/actions/details for the current step. (Default target: Ubuntu/Debian (VPS or WSL+systemd))',
+        logTitle: 'Progress log (details)',
+        btnCopyLog: 'Copy full log',
+
+        appTitle: 'autoclaw',
+        brandTitleHtml: 'autoclaw',
+        wizardTitle: 'Setup wizard steps',
+        logPlaceholder: '(Logs will appear here)',
+        bootstrapBoxTitle: 'Access code (shown only once)',
+        bootstrapBoxHint: 'Drag (or long-press) to select, then copy. Save it somewhere safe.',
+
+        pillClient: 'client',
+        pillMode: 'mode',
+        jobIdLabel: 'job id:',
+        streamLabel: 'stream:',
+        streamIdle: 'idle',
+        streamLive: 'live',
+        streamError: 'error',
+
+        stepBadgeDone: 'Done',
+        stepBadgeTodo: 'Todo',
+
+        bootstrapHintBootstrapped: 'An access code has already been issued on this server. Paste it below to sign in. (If lost: SSH → delete sh/state/auth.json under the install directory, then reconnect to re-issue)',
+        bootstrapHintNotBootstrapped: 'The access code is shown only once. Make sure to save it.',
+        authAlreadyBootstrappedMsg: 'An access code has already been issued on this server. Paste it below to sign in. (If lost: SSH → delete sh/state/auth.json under the install directory, then reconnect to re-issue)',
+        authBootstrapFailPrefix: 'Failed to generate: ',
+        authBootstrapRecordNotice: 'Make sure to save the access code.',
+
+        authIntroHtml: 'This dashboard may be accessible from the public internet. Please generate an access code (24 chars), save it safely, then sign in.<br>If you lose the access code, recovery can be difficult.<br>(Recovery: delete <span class="mono">sh/state/auth.json</span> under the install directory, then reconnect to re-issue a new code)',
+
+        // steps
+        step_doctor_name: '1. Doctor',
+        step_doctor_desc: 'Check OS and required commands. You can proceed even if this fails, but it helps surface issues early.',
+        step_prereqs_name: '2. Base packages',
+        step_prereqs_desc: 'Install required packages (curl/git/jq/lsof, etc.). Skips if already present.',
+        step_swap_name: '3. Swap (recommended)',
+        step_swap_desc: 'Configure swapfile (default 2GB) to avoid OOM on small VPS. Skips if already configured.',
+        step_node_pnpm_name: '4. Node + pnpm',
+        step_node_pnpm_desc: 'Ensure node>=20 and pnpm>=9 (NodeSource LTS). Skips if already satisfied.',
+        step_install_openclaw_cli_name: '5. Install OpenClaw',
+        step_install_openclaw_cli_desc: 'Install OpenClaw CLI via npm -g openclaw (skips if already installed).',
+        step_write_config_name: '6. openclaw.json',
+        step_write_config_desc: 'Create/patch ~/.openclaw/openclaw.json from dashboard secrets.',
+        step_start_gateway_name: '7. Gateway service',
+        step_start_gateway_desc: 'Install/start gateway service and verify status.',
+        step_provider_setup_name: '8. Provider / Model / API key',
+        step_provider_setup_desc: 'Select provider/model and set API key.',
+        step_channels_setup_name: '9. Channel settings',
+        step_channels_setup_desc: 'Configure Telegram channel settings (allowFrom required).',
+        step_start_node_name: '10. Node service',
+        step_start_node_desc: 'Install/restart node service and verify status.',
+        step_done_name: 'Installation complete',
+        step_done_desc: 'Installation is complete. Use Telegram to chat with OpenClaw and explore freely.',
+
+        // misc UI
+        btnRunStep: 'Run this step',
+        runHint: 'When you run it, detailed progress will appear in the log below.',
+        envDetecting: 'Detecting environment…',
+        envHintVps: 'Proceed assuming Ubuntu VPS (systemd).',
+        envHintWsl: 'WSL detected. This wizard follows the same flow as VPS. (From Windows, http://localhost:8787 is recommended)',
+        envHintNoSystemdAppend: ' systemd not detected (service install steps may be limited).',
+        envHintLowRamNoSwapAppend: ' (Warning: low RAM and no swap → OOM risk. Step 3 (swap) recommended)',
+
+
+        // panel: write_config
+        gatewayTokenTitle: 'Gateway token',
+        gatewayTokenDesc: 'A token used by the dashboard/tools to access OpenClaw Gateway.',
+        gatewayTokenLabel: 'OpenClaw Gateway Token',
+        gatewayTokenPh: 'Auto-generated',
+        tokenShow: 'Show token',
+        tokenEdit: 'Edit manually',
+        gatewayTokenAutoApplyHintHtml: 'The auto-generated token will be applied when you click <span class="mono">Apply settings (run patch)</span>.',
+        openclawJsonPatchBtn: 'Apply settings (run patch)',
+
+        providerPickTitle: 'Choose provider',
+        providerPickHint: 'Pick without dropdown; next options will appear.',
+        providerOther: 'Other',
+        providerNeedPick: 'Pick a provider above first.',
+        providerCatalogLoading: 'Loading model catalog…',
+        providerCatalogFail: 'Failed to load model catalog. (Check network/server logs)',
+        providerOtherTitle: 'Other providers',
+        providerOtherNotSupported: 'This dashboard does not support automatic setup for other providers yet.',
+        providerOtherDocsHint: 'See GitHub/docs for details.',
+        providerModelsFromCliHint: '(On entering step 8) Model list read from OpenClaw CLI.',
+        modelPickTitle: 'Choose a model',
+        apiKeyTitle: 'API key',
+        apiKeyPh: 'API key',
+        savedKeyHint: 'A saved key exists. It is masked by default; use “Show token / Edit manually” to view/edit it.',
+        savedTokenHint: 'A saved token exists. It is masked by default; use “Show token / Edit manually” to view/edit it.',
+        savedIdHint: 'A saved value exists. It is masked by default; use “Show token / Edit manually” to view/edit it.',
+        providerCatalogLoadingFirst: 'Loading model catalog first…',
+        noModelsOpenai: '(openai) No models found.',
+        noModelsAnthropic: '(anthropic) No models found.',
+        noModelsGoogle: '(google) No models found.',
+
+        btnSave: 'Save',
+        btnApplyPatch: 'Apply settings (run patch)',
+        btnTestLive: 'Test (live)',
+        testNeedFill: 'Please fill provider/model/API key first.',
+        testRunning: 'Testing…',
+        testOk: 'Test passed ✅ (Apply button is now enabled)',
+        testFailPrefix: 'Test failed: ',
+
+        channelsTitle: 'Channel settings',
+        channelsHint: 'Only channels with tokens will be configured.',
+        telegramTitle: 'Telegram',
+        telegramTokenLabel: 'Telegram Bot Token',
+        telegramAllowFromLabel: 'Telegram User ID (allowFrom)',
+        telegramAllowFromHelpHtml: 'Numbers only (no spaces/letters/@username). Find your numeric user id first. (e.g. via <span class="mono">@userinfobot</span>)',
+        telegramAllowFromPh: 'e.g. 28415764',
+        telegramTokenPh: '123:ABC...',
+        telegramAllowFromRequiredHint: 'If you provide a token, the numeric user id (allowFrom) is required.',
+        channelsApplyBtn: 'Apply channel settings (run patch)',
+        channelsSaveOk: 'Saved.',
+
+        copyOk: 'Copied',
+        copyFail: 'Copy failed: check browser permissions',
+
+        saveFailPrefix: 'Failed to save: ',
+        saveTmpOk: 'Saved. (Temporarily stored on the server)',
+
+        runFailPrefix: 'Run failed: ',
+
+        resetConfirm: 'Reset so you can re-run diagnosis (step 1) only?\n\n- Keeps security settings\n- Does not touch OpenClaw install/config',
+        resetFail: 'Reset failed',
+        resetOk: 'Ready to run diagnosis again',
+
+        authNeedCode: 'Please enter the access code.',
+        authCodeTooShort: 'Access code length looks wrong. (e.g. 24 chars)',
+        authCodeWrong: 'The access code is incorrect.',
+        authNotBootstrapped: 'No access code has been generated yet. Click “Generate access code” first.',
+        authLoginFail: 'Sign-in failed. Please check the access code.',
+        authLoginOk: 'Signed in.',
+      }
+    };
+
+    function detectLang() {
+      const saved = localStorage.getItem('autoclaw_lang');
+      if (saved === 'ko' || saved === 'en') return saved;
+      const nav = (navigator.language || '').toLowerCase();
+      return nav.startsWith('ko') ? 'ko' : 'en';
+    }
+
+    let LANG = detectLang();
+    function t(key) {
+      return (I18N[LANG] && I18N[LANG][key]) || (I18N.ko && I18N.ko[key]) || key;
+    }
+    let AUTH_STATUS = null;
+
+    function setLang(lang) {
+      if (lang !== 'ko' && lang !== 'en') return;
+      LANG = lang;
+      localStorage.setItem('autoclaw_lang', lang);
+      applyI18n();
+      applyLangUI();
+      renderSteps(doneSetGlobal || new Set());
+      renderPanel();
+    }
+
+    function renderBootstrapHint() {
+      const hint = document.getElementById('bootstrapHint');
+      if (!hint || !AUTH_STATUS) return;
+      hint.textContent = AUTH_STATUS.bootstrapped ? t('bootstrapHintBootstrapped') : t('bootstrapHintNotBootstrapped');
+    }
+
+    function applyLangUI() {
+      const isKo = (LANG === 'ko');
+
+      // auth gate buttons
+      const koBtn = document.getElementById('btnLangKo');
+      const enBtn = document.getElementById('btnLangEn');
+      if (koBtn && enBtn) {
+        koBtn.classList.toggle('active', isKo);
+        enBtn.classList.toggle('active', !isKo);
+        koBtn.setAttribute('aria-pressed', String(isKo));
+        enBtn.setAttribute('aria-pressed', String(!isKo));
+      }
+
+      // top bar buttons (after login)
+      const topKo = document.getElementById('topLangKo');
+      const topEn = document.getElementById('topLangEn');
+      if (topKo && topEn) {
+        topKo.classList.toggle('active', isKo);
+        topEn.classList.toggle('active', !isKo);
+        topKo.setAttribute('aria-pressed', String(isKo));
+        topEn.setAttribute('aria-pressed', String(!isKo));
+      }
+
+      document.documentElement.lang = LANG;
+    }
+
+    function applyI18n() {
+      const el = (id) => document.getElementById(id);
+
+      // document-level
+      document.title = t('appTitle');
+
+      // brand / static labels
+      if (el('brandTitle')) el('brandTitle').innerHTML = t('brandTitleHtml');
+      if (el('wizardTitle')) el('wizardTitle').textContent = t('wizardTitle');
+      if (el('pillClient')) el('pillClient').textContent = t('pillClient');
+      if (el('pillMode')) el('pillMode').textContent = t('pillMode');
+      if (el('jobIdLabel')) el('jobIdLabel').textContent = t('jobIdLabel');
+      if (el('streamLabel')) el('streamLabel').textContent = t('streamLabel');
+      const streamState = el('streamState');
+      if (streamState) {
+        if (streamState.textContent === I18N.ko.streamIdle || streamState.textContent === I18N.en.streamIdle) streamState.textContent = t('streamIdle');
+        if (streamState.textContent === I18N.ko.streamLive || streamState.textContent === I18N.en.streamLive) streamState.textContent = t('streamLive');
+        if (streamState.textContent === I18N.ko.streamError || streamState.textContent === I18N.en.streamError) streamState.textContent = t('streamError');
+      }
+
+      const envHint = el('envHint');
+      if (envHint && (envHint.textContent === I18N.ko.envDetecting || envHint.textContent === I18N.en.envDetecting)) envHint.textContent = t('envDetecting');
+
+      // log placeholder (UI only, not the actual streamed logs)
+      const pre = el('log');
+      if (pre && (pre.textContent === I18N.ko.logPlaceholder || pre.textContent === I18N.en.logPlaceholder)) pre.textContent = t('logPlaceholder');
+
+      // auth gate
+      const authTitle = document.querySelector('#authGate .card > div');
+      if (authTitle) authTitle.textContent = t('authTitle');
+      if (el('btnBootstrap')) el('btnBootstrap').textContent = t('authBtnBootstrap');
+      if (el('bootstrapBoxTitle')) el('bootstrapBoxTitle').textContent = t('bootstrapBoxTitle');
+      if (el('bootstrapBoxHint')) el('bootstrapBoxHint').textContent = t('bootstrapBoxHint');
+
+      const loginTitle = el('authLoginTitle');
+      if (loginTitle) loginTitle.textContent = t('authLoginTitle');
+      if (el('btnLogin')) el('btnLogin').textContent = t('authLoginBtn');
+      if (el('loginCode')) el('loginCode').placeholder = t('authLoginPh');
+      if (el('langLabel')) el('langLabel').textContent = t('langLabel');
+      if (el('authIntro')) el('authIntro').innerHTML = t('authIntroHtml');
+
+      // top bar / common
+      if (el('btnReset')) el('btnReset').textContent = t('btnReset');
+      if (el('topSub')) el('topSub').textContent = t('topSub');
+      if (el('logTitle')) el('logTitle').textContent = t('logTitle');
+      if (el('btnCopyLog')) el('btnCopyLog').textContent = t('btnCopyLog');
+
+      const st = el('statusText');
+      if (st) {
+        if (st.textContent === I18N.ko.statusChecking || st.textContent === I18N.en.statusChecking) st.textContent = t('statusChecking');
+        if (st.textContent === I18N.ko.statusIdle || st.textContent === I18N.en.statusIdle) st.textContent = t('statusIdle');
+      }
+
+      renderBootstrapHint();
+    }
+
+    // Wizard steps (Ubuntu VPS first)
+    const STEPS = [
+      { id:'doctor' },
+      { id:'prereqs' },
+      { id:'swap' },
+      { id:'node_pnpm' },
+      { id:'install_openclaw_cli' },
+      { id:'write_config' },
+      { id:'start_gateway' },
+      { id:'provider_setup' },
+      { id:'channels_setup' },
+      { id:'start_node' },
+      { id:'done' },
+    ];
+
+    function stepName(id) { return t(`step_${id}_name`); }
+    function stepDesc(id) { return t(`step_${id}_desc`); }
+
+    function getStepIndexById(id) {
+      const idx = STEPS.findIndex(s => s.id === id);
+      return idx >= 0 ? (idx + 1) : 1;
+    }
+
+    function getStepIdByIndex(n) {
+      const idx = Math.max(1, Number(n || 1)) - 1;
+      return STEPS[Math.min(idx, STEPS.length - 1)]?.id || STEPS[0].id;
+    }
+
+    function readStepParam() {
+      const u = new URL(window.location.href);
+      return u.searchParams.get('step');
+    }
+
+    function writeStepParam(stepId) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('step', String(getStepIndexById(stepId)));
+      window.history.replaceState({}, '', u);
+    }
+
+    let selected = getStepIdByIndex(readStepParam());
+    let currentJobId = null;
+    let evt = null;
+    let doneSetGlobal = new Set();
+
+    function setStatus(kind, text) {
+      const dot = document.getElementById('statusDot');
+      dot.className = 'dot ' + (kind || '');
+      document.getElementById('statusText').textContent = text;
+    }
+
+    function renderSteps(doneSet = new Set()) {
+      const el = document.getElementById('steps');
+      el.innerHTML = '';
+      for (const s of STEPS) {
+        const div = document.createElement('div');
+        const isDone = doneSet.has(s.id);
+        const isSelected = (selected === s.id);
+
+        // Special styling for the final "done" step
+        const isDoneStep = (s.id === 'done');
+        div.className = 'step' + (isSelected ? ' active' : '') + (isDoneStep && isDone ? ' doneStep' : '');
+
+        div.onclick = () => {
+          selected = s.id;
+          writeStepParam(selected);
+          renderSteps(doneSet);
+          renderPanel();
+        };
+
+        const left = document.createElement('div');
+        left.className = 'name';
+        left.textContent = stepName(s.id);
+
+        const badge = document.createElement('div');
+        badge.className = 'badge ' + (isDone ? 'done' : 'todo');
+        badge.textContent = isDone ? t('stepBadgeDone') : t('stepBadgeTodo');
+
+        div.appendChild(left);
+        div.appendChild(badge);
+        el.appendChild(div);
+      }
+    }
+
+    function firstTodoStepId(doneSet) {
+      for (const s of STEPS) {
+        if (s.id === 'done') continue;
+        if (!doneSet.has(s.id)) return s.id;
+      }
+      return STEPS[STEPS.length - 1]?.id;
+    }
+
+    async function refreshEnv() {
+      if (!authed) return;
+      const pr = await api('/api/progress');
+      if (pr.authRequired || !pr.j || !pr.j.env) return;
+
+      const j = pr.j;
+      const env = j.env;
+      const checks = j.checks;
+      const files = j.files;
+      const taskStatus = j.taskStatus || {};
+
+      const resources = j.resources || {};
+
+
+      const st = await api('/api/status');
+      if (st.authRequired) return;
+      const stJson = st.j || {};
+      document.getElementById('clientIp').textContent = stJson.clientIp || '-';
+      const runningTask = stJson.current && stJson.current.status === 'running' ? stJson.current.task : null;
+
+      let mode = 'VPS';
+      let hint = t('envHintVps');
+      if (env.isWsl) {
+        mode = 'WSL';
+        hint = t('envHintWsl');
+      }
+      if (!env.hasSystemd) {
+        hint += t('envHintNoSystemdAppend');
+      }
+      document.getElementById('envMode').textContent = mode;
+      if (resources.memTotalMb && resources.memTotalMb < 1500 && (!resources.swapTotalMb || resources.swapTotalMb == 0)) {
+        hint += t('envHintLowRamNoSwapAppend');
+      }
+      document.getElementById('envHint').textContent = hint;
+
+      // infer done steps
+      const done = new Set();
+      if (taskStatus['doctor']?.status === 'ok' || taskStatus['00_doctor']?.status === 'ok') done.add('doctor');
+      if (checks.curl && checks.git && checks.jq && checks.lsof) done.add('prereqs');
+      if ((resources.swapTotalMb != null && resources.swapTotalMb > 0) || (taskStatus['swap']?.status === 'ok') || (taskStatus['10a_swap']?.status === 'ok')) done.add('swap');
+      if (checks.node && checks.pnpm && checks.npm) done.add('node_pnpm');
+      if (checks.openclaw) done.add('install_openclaw_cli');
+      // 21 단계는 openclaw.json이 실제로 생성/패치된 경우에만 완료로 친다.
+      if (files.openclawConfig) done.add('write_config');
+      if (files.gatewayOk) done.add('start_gateway');
+      if (files.providerOk) done.add('provider_setup');
+      if (files.channelsOk) done.add('channels_setup');
+      if (files.nodeOk) done.add('start_node');
+
+      // installation complete marker (UI only)
+      const installComplete = (
+        done.has('doctor') &&
+        done.has('prereqs') &&
+        done.has('node_pnpm') &&
+        done.has('install_openclaw_cli') &&
+        done.has('write_config') &&
+        done.has('start_gateway') &&
+        done.has('provider_setup') &&
+        done.has('channels_setup') &&
+        done.has('start_node')
+      );
+      if (installComplete) done.add('done');
+
+      doneSetGlobal = done;
+
+      // 자동 추천: 이미 완료된 단계면 다음 todo로 자동 이동
+      // 단, 현재 어떤 task가 실행 중이면(특히 설치/업그레이드) 작업이 끝날 때까지 자동 이동하지 않는다.
+      const next = firstTodoStepId(done);
+      const stepLocked = (new URL(window.location.href)).searchParams.has('step');
+      if (!runningTask && !stepLocked && done.has(selected)) {
+        selected = next;
+        writeStepParam(selected);
+        renderPanel();
+      }
+
+      renderSteps(done);
+    }
+
+    function renderPanel() {
+      const step = STEPS.find(s => s.id === selected);
+      document.getElementById('panelTitle').textContent = step ? stepName(step.id) : '-';
+      document.getElementById('panelDesc').textContent = step ? stepDesc(step.id) : '-';
+
+      const body = document.getElementById('panelBody');
+      body.innerHTML = '';
+
+      if (selected === 'write_config') {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.background = 'var(--panel2)';
+
+        card.innerHTML = `
+          <div style="font-weight:700; margin-bottom:8px">${t('gatewayTokenTitle')}</div>
+          <div class="muted" style="margin-bottom:10px">${t('gatewayTokenDesc')}</div>
+
+          <label>${t('gatewayTokenLabel')}</label>
+          <input id="gatewayToken" type="password" placeholder="${t('gatewayTokenPh')}" disabled />
+
+          <div class="row" style="margin-top:8px">
+            <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+              <input id="toggleShowGateway" type="checkbox" style="width:auto" />
+              ${t('tokenShow')}
+            </label>
+            <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+              <input id="toggleEditGateway" type="checkbox" style="width:auto" />
+              ${t('tokenEdit')}
+            </label>
+          </div>
+
+          <div class="muted" style="margin-top:8px">${t('gatewayTokenAutoApplyHintHtml')}</div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnSave">${t('btnSave')}</button>
+            <button id="btnRun">${t('openclawJsonPatchBtn')}</button>
+          </div>
+          <div id="secretsSaved" class="muted" style="margin-top:10px"></div>
+        `;
+
+        body.appendChild(card);
+
+        const genToken = (len=40) => {
+          const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+          const arr = new Uint8Array(len);
+          crypto.getRandomValues(arr);
+          let out = '';
+          for (let i=0;i<len;i++) out += alphabet[arr[i] % alphabet.length];
+          return out;
+        };
+
+        const gt = card.querySelector('#gatewayToken');
+        const show = card.querySelector('#toggleShowGateway');
+        const edit = card.querySelector('#toggleEditGateway');
+
+        (async () => {
+          try {
+            const { j } = await api('/api/secrets');
+            if (j && j.ok && j.secrets) {
+              if (j.secrets.gatewayToken) gt.value = j.secrets.gatewayToken;
+            }
+          } catch {}
+
+          if (!gt.value) {
+            gt.value = genToken(42);
+            await saveSecrets(true);
+          }
+        })();
+
+        show.onchange = () => { gt.type = show.checked ? 'text' : 'password'; };
+        edit.onchange = () => { gt.disabled = !edit.checked; };
+
+        card.querySelector('#btnSave').onclick = () => saveSecrets(false);
+        card.querySelector('#btnRun').onclick = () => run('write_config');
+
+        return;
+      }
+
+      if (selected === 'provider_setup') {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.background = 'var(--panel2)';
+        card.innerHTML = `
+          <div style="font-weight:700; margin-bottom:8px">${t('providerPickTitle')}</div>
+          <div class="muted" style="margin-bottom:10px">${t('providerPickHint')}</div>
+
+          <div class="row" style="gap:10px; margin-bottom:10px">
+            <button id="pOpenai">OpenAI</button>
+            <button id="pClaude">Claude</button>
+            <button id="pGemini">Gemini</button>
+            <button id="pOther">${t('providerOther')}</button>
+          </div>
+
+          <div id="provFlow"></div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnSaveProvider">${t('btnSave')}</button>
+            <button id="btnTestProvider" disabled>${t('btnTestLive')}</button>
+            <button id="btnRunProvider" disabled>${t('btnApplyPatch')}</button>
+          </div>
+          <div id="providerSaved" class="muted" style="margin-top:10px"></div>
+        `;
+        body.appendChild(card);
+
+        const flow = card.querySelector('#provFlow');
+        const msg = card.querySelector('#providerSaved');
+
+        const state = {
+          provider: null,
+          model: null,
+          apiKey: '',
+          savedKeys: { openai: '', anthropic: '', google: '' },
+        };
+        let catalog = { providers: [], modelsByProvider: {} };
+        let catalogReady = false;
+        let testPassed = false;
+
+        const showOther = () => {
+          flow.innerHTML = `
+            <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+              <div style="font-weight:700; margin-bottom:8px">${t('providerOtherTitle')}</div>
+              <div class="muted">${t('providerOtherNotSupported')}</div>
+              <div class="muted" style="margin-top:8px">${t('providerOtherDocsHint')}</div>
+              <div class="mono" style="margin-top:8px">https://github.com/my3rdstory/autoclaw-web</div>
+              <div class="mono" style="margin-top:6px">https://docs.openclaw.ai/concepts/model-providers</div>
+            </div>
+          `;
+          state.provider = 'other';
+        };
+
+        const loadCatalog = async () => {
+          // Fetch the latest providers + full catalog once per step entry.
+          catalogReady = false;
+          flow.innerHTML = `<div class="muted">${t('providerCatalogLoading')}</div>`;
+
+          try {
+            const r = await api('/api/models');
+            if (r && r.j && r.j.ok) {
+              const providers = Array.isArray(r.j.providers) ? r.j.providers : [];
+              const models = Array.isArray(r.j.models) ? r.j.models : [];
+
+              const byProvider = {};
+              for (const p of providers) byProvider[p] = [];
+              for (const m of models) {
+                const key = String(m.key || '');
+                const idx = key.indexOf('/');
+                const p = idx > 0 ? key.slice(0, idx) : 'unknown';
+                (byProvider[p] ||= []).push({ id: m.key, name: m.name || m.key });
+              }
+
+              // stable sort
+              for (const p of Object.keys(byProvider)) {
+                byProvider[p].sort((a,b) => String(a.name).localeCompare(String(b.name)) || String(a.id).localeCompare(String(b.id)));
+              }
+
+              catalog = { providers, modelsByProvider: byProvider };
+              catalogReady = true;
+              flow.innerHTML = `<div class="muted">${t('providerNeedPick')}</div>`;
+              return true;
+            }
+          } catch {}
+
+          flow.innerHTML = `<div class="muted">${t('providerCatalogFail')}</div>`;
+          return false;
+        };
+
+        const modelButtons = (models) => models.map(m => `<button class="modelBtn" data-model="${m.id}">${m.name}</button>`).join('');
+
+        const renderApiKey = (label, keyId, initialValue = '') => {
+          const hasSaved = !!initialValue;
+          flow.insertAdjacentHTML('beforeend', `
+            <div style="height:12px"></div>
+            <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+              <div style="font-weight:700; margin-bottom:8px">${t('apiKeyTitle')}</div>
+              <label>${label}</label>
+              <input id="${keyId}" type="password" placeholder="${t('apiKeyPh')}" ${hasSaved ? 'disabled' : ''} />
+              <div class="row" style="margin-top:8px">
+                <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                  <input id="toggleShowKey-${keyId}" type="checkbox" style="width:auto" />
+                  ${t('tokenShow')}
+                </label>
+                <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                  <input id="toggleEditKey-${keyId}" type="checkbox" style="width:auto" ${hasSaved ? '' : 'checked'} />
+                  ${t('tokenEdit')}
+                </label>
+              </div>
+              <div id="keySavedHint-${keyId}" class="muted" style="margin-top:8px; ${hasSaved ? '' : 'display:none'}">
+                ${t('savedKeyHint')}
+              </div>
+            </div>
+          `);
+
+          const input = card.querySelector('#' + keyId);
+          const show = card.querySelector('#toggleShowKey-' + keyId);
+          const edit = card.querySelector('#toggleEditKey-' + keyId);
+
+          if (input && hasSaved) input.value = initialValue; // masked by default
+          if (show && input) show.onchange = () => { input.type = show.checked ? 'text' : 'password'; };
+          if (edit && input) {
+            edit.onchange = () => { input.disabled = !edit.checked; };
+            // default: saved key → editing off; new key → editing on
+            if (hasSaved) input.disabled = !edit.checked;
+          }
+
+          return input;
+        };
+
+        const renderOpenAI = () => {
+          if (!catalogReady) {
+            flow.innerHTML = `<div class="muted">${t('providerCatalogLoadingFirst')}</div>`;
+            return;
+          }
+
+          state.provider = 'openai';
+
+          flow.innerHTML = `
+            <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+              <div style="font-weight:700; margin-bottom:8px">OpenAI</div>
+              <div class="muted" style="margin-bottom:10px">${t('providerModelsFromCliHint')}</div>
+
+              <div style="font-weight:700; margin: 4px 0 8px">${t('modelPickTitle')}</div>
+              <div class="row" style="gap:10px" id="oaModels"></div>
+            </div>
+          `;
+
+          const modelsEl = card.querySelector('#oaModels');
+          const models = catalog.modelsByProvider.openai || [];
+          modelsEl.innerHTML = models.length ? modelButtons(models) : `<div class="muted">${t('noModelsOpenai')}</div>`;
+
+          if (!state.model || !models.some(m => m.id === state.model)) {
+            state.model = models[0]?.id || null;
+          }
+
+          const applyActive = () => {
+            modelsEl.querySelectorAll('.modelBtn').forEach(btn => {
+              btn.classList.toggle('active', btn.dataset.model === state.model);
+            });
+          };
+
+          modelsEl.querySelectorAll('.modelBtn').forEach(b => {
+            b.onclick = () => { state.model = b.dataset.model; testPassed = false; applyActive(); refreshProviderButtons(); };
+          });
+
+          applyActive();
+
+          // API key input (below)
+          state.apiKey = state.savedKeys.openai || '';
+          const input = renderApiKey('OPENAI_API_KEY', 'openaiKey', state.savedKeys.openai);
+          input.oninput = () => { state.apiKey = input.value.trim(); testPassed = false; refreshProviderButtons(); };
+          refreshProviderButtons();
+        };
+
+        const renderClaude = () => {
+          if (!catalogReady) {
+            flow.innerHTML = `<div class="muted">${t('providerCatalogLoadingFirst')}</div>`;
+            return;
+          }
+
+          state.provider = 'anthropic';
+          flow.innerHTML = `
+            <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+              <div style="font-weight:700; margin-bottom:8px">Claude(Anthropic)</div>
+              <div class="muted" style="margin-bottom:10px">${t('providerModelsFromCliHint')}</div>
+              <div class="row" style="gap:10px" id="clModels"></div>
+            </div>
+          `;
+
+          const modelsEl = flow.querySelector('#clModels');
+          const models = catalog.modelsByProvider.anthropic || [];
+          modelsEl.innerHTML = models.length ? modelButtons(models) : `<div class="muted">${t('noModelsAnthropic')}</div>`;
+
+          if (!state.model || !models.some(m => m.id === state.model)) state.model = models[0]?.id || null;
+
+          const applyActive = () => {
+            modelsEl.querySelectorAll('.modelBtn').forEach(btn => btn.classList.toggle('active', btn.dataset.model === state.model));
+          };
+          modelsEl.querySelectorAll('.modelBtn').forEach(b => {
+            b.onclick = () => { state.model=b.dataset.model; testPassed = false; applyActive(); refreshProviderButtons(); };
+          });
+          applyActive();
+
+          state.apiKey = state.savedKeys.anthropic || '';
+          const input = renderApiKey('ANTHROPIC_API_KEY', 'anthropicKey', state.savedKeys.anthropic);
+          input.oninput = () => { state.apiKey = input.value.trim(); testPassed = false; refreshProviderButtons(); };
+          refreshProviderButtons();
+        };
+
+        const renderGemini = () => {
+          if (!catalogReady) {
+            flow.innerHTML = `<div class="muted">${t('providerCatalogLoadingFirst')}</div>`;
+            return;
+          }
+
+          state.provider = 'google';
+          flow.innerHTML = `
+            <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+              <div style="font-weight:700; margin-bottom:8px">Gemini(Google)</div>
+              <div class="muted" style="margin-bottom:10px">${t('providerModelsFromCliHint')}</div>
+              <div class="row" style="gap:10px" id="gModels"></div>
+            </div>
+          `;
+
+          const modelsEl = flow.querySelector('#gModels');
+          const models = catalog.modelsByProvider.google || [];
+          modelsEl.innerHTML = models.length ? modelButtons(models) : `<div class="muted">${t('noModelsGoogle')}</div>`;
+
+          if (!state.model || !models.some(m => m.id === state.model)) state.model = models[0]?.id || null;
+
+          const applyActive = () => {
+            modelsEl.querySelectorAll('.modelBtn').forEach(btn => btn.classList.toggle('active', btn.dataset.model === state.model));
+          };
+          modelsEl.querySelectorAll('.modelBtn').forEach(b => {
+            b.onclick = () => { state.model=b.dataset.model; testPassed = false; applyActive(); refreshProviderButtons(); };
+          });
+          applyActive();
+
+          state.apiKey = state.savedKeys.google || '';
+          const input = renderApiKey('GEMINI_API_KEY', 'geminiKey', state.savedKeys.google);
+          input.oninput = () => { state.apiKey = input.value.trim(); testPassed = false; refreshProviderButtons(); };
+          refreshProviderButtons();
+        };
+
+        // initial load existing secrets
+        (async () => {
+          try {
+            const { j } = await api('/api/secrets');
+            if (j && j.ok && j.secrets) {
+              if (j.secrets.provider) state.provider = j.secrets.provider;
+              if (j.secrets.model) state.model = j.secrets.model;
+              // Load saved keys for masking/show/edit (same UX as gateway token).
+              if (j.secrets.openaiApiKey) state.savedKeys.openai = String(j.secrets.openaiApiKey);
+              if (j.secrets.anthropicApiKey) state.savedKeys.anthropic = String(j.secrets.anthropicApiKey);
+              if (j.secrets.geminiApiKey) state.savedKeys.google = String(j.secrets.geminiApiKey);
+            }
+          } catch {}
+        })();
+
+        card.querySelector('#pOpenai').onclick = renderOpenAI;
+        card.querySelector('#pClaude').onclick = renderClaude;
+        card.querySelector('#pGemini').onclick = renderGemini;
+        card.querySelector('#pOther').onclick = showOther;
+
+        // Step entry: prefetch the latest catalog once so provider/model clicks are instant.
+        void loadCatalog();
+
+        const buildPatch = () => {
+          const patch = { provider: state.provider, model: state.model };
+          if (state.provider === 'openai') patch.openaiApiKey = state.apiKey;
+          if (state.provider === 'anthropic') patch.anthropicApiKey = state.apiKey;
+          if (state.provider === 'google') patch.geminiApiKey = state.apiKey;
+          return patch;
+        };
+
+        const basicValid = () => {
+          if (!state.provider || !state.model) return false;
+          if (state.provider === 'openai' && !state.apiKey) return false;
+          if (state.provider === 'anthropic' && !state.apiKey) return false;
+          if (state.provider === 'google' && !state.apiKey) return false;
+          return true;
+        };
+
+        const refreshProviderButtons = () => {
+          const testBtn = card.querySelector('#btnTestProvider');
+          const runBtn = card.querySelector('#btnRunProvider');
+          if (testBtn) testBtn.disabled = !basicValid();
+          if (runBtn) runBtn.disabled = !(basicValid() && testPassed);
+        };
+
+        card.querySelector('#btnSaveProvider').onclick = async () => {
+          const patch = buildPatch();
+          const ok = await saveSecretsMerged(patch, false);
+          if (ok) {
+            msg.textContent = t('channelsSaveOk');
+          }
+        };
+        card.querySelector('#btnTestProvider').onclick = async () => {
+          if (!basicValid()) { msg.textContent = t('testNeedFill'); return; }
+          msg.textContent = t('testRunning');
+          testPassed = false;
+          refreshProviderButtons();
+
+          const patch = buildPatch();
+          const body = {
+            provider: patch.provider,
+            model: patch.model,
+            openaiApiKey: patch.openaiApiKey,
+            anthropicApiKey: patch.anthropicApiKey,
+            geminiApiKey: patch.geminiApiKey,
+          };
+
+          try {
+            const { j, authRequired } = await api('/api/model-test', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (authRequired) return;
+            if (j && j.ok) {
+              testPassed = true;
+              msg.textContent = t('testOk');
+            } else {
+              msg.textContent = t('testFailPrefix') + ((j && j.error) || '');
+            }
+          } catch (e) {
+            msg.textContent = t('testFailPrefix') + (e && e.message ? e.message : String(e));
+          }
+
+          refreshProviderButtons();
+        };
+
+        card.querySelector('#btnRunProvider').onclick = async () => {
+          const patch = buildPatch();
+          const ok = await saveSecretsMerged(patch, false);
+          if (!ok) return;
+          run('provider_setup');
+        };
+
+        return;
+      }
+
+      if (selected === 'channels_setup') {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.background = 'var(--panel2)';
+
+        card.innerHTML = `
+          <div style="font-weight:700; margin-bottom:8px">${t('channelsTitle')}</div>
+          <div class="muted" style="margin-bottom:10px">${t('channelsHint')}</div>
+
+          <div class="card" style="background:var(--panel); margin:0; border-color: rgba(255,255,255,0.10)">
+            <div style="font-weight:700; margin-bottom:8px">${t('telegramTitle')}</div>
+
+            <label>${t('telegramTokenLabel')}</label>
+            <input id="telegramToken" type="password" placeholder="${t('telegramTokenPh')}" />
+            <div class="row" style="margin-top:8px">
+              <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                <input id="toggleShowTelegram" type="checkbox" style="width:auto" />
+                ${t('tokenShow')}
+              </label>
+              <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                <input id="toggleEditTelegram" type="checkbox" style="width:auto" checked />
+                ${t('tokenEdit')}
+              </label>
+            </div>
+            <div id="telegramTokenHint" class="muted" style="margin-top:8px; display:none">${t('savedTokenHint')}</div>
+
+            <label>${t('telegramAllowFromLabel')}</label>
+            <input id="telegramAllowFrom" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="${t('telegramAllowFromPh')}" />
+            <div class="row" style="margin-top:8px">
+              <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                <input id="toggleShowAllowFrom" type="checkbox" style="width:auto" />
+                ${t('tokenShow')}
+              </label>
+              <label class="row" style="gap:8px; cursor:pointer; user-select:none">
+                <input id="toggleEditAllowFrom" type="checkbox" style="width:auto" checked />
+                ${t('tokenEdit')}
+              </label>
+            </div>
+            <div id="allowFromHint" class="muted" style="margin-top:8px; display:none">${t('savedIdHint')}</div>
+
+            <div class="muted" style="margin-top:8px">
+              ${t('telegramAllowFromHelpHtml')}
+            </div>
+
+            <div class="muted" style="margin-top:8px">${t('telegramAllowFromRequiredHint')}</div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnSaveCh">${t('btnSave')}</button>
+            <button id="btnRunCh">${t('channelsApplyBtn')}</button>
+          </div>
+          <div id="channelsSaved" class="muted" style="margin-top:10px"></div>
+        `;
+
+        body.appendChild(card);
+
+        (async () => {
+          try {
+            const { j } = await api('/api/secrets');
+            if (j && j.ok && j.secrets) {
+              const tok = j.secrets.telegramToken ? String(j.secrets.telegramToken) : '';
+              const tokInput = card.querySelector('#telegramToken');
+              const tokHint = card.querySelector('#telegramTokenHint');
+              const show = card.querySelector('#toggleShowTelegram');
+              const edit = card.querySelector('#toggleEditTelegram');
+
+              if (tokInput) tokInput.value = tok;
+
+              // Saved token UX: masked by default, editing off.
+              if (tok && tokInput && edit) {
+                tokInput.disabled = true;
+                edit.checked = false;
+                if (tokHint) tokHint.style.display = 'block';
+              }
+
+              if (show && tokInput) show.onchange = () => { tokInput.type = show.checked ? 'text' : 'password'; };
+              if (edit && tokInput) edit.onchange = () => { tokInput.disabled = !edit.checked; };
+
+              const allowVal = j.secrets.telegramAllowFrom ? String(j.secrets.telegramAllowFrom) : '';
+              const allowInput = card.querySelector('#telegramAllowFrom');
+              const allowHint = card.querySelector('#allowFromHint');
+              const showA = card.querySelector('#toggleShowAllowFrom');
+              const editA = card.querySelector('#toggleEditAllowFrom');
+
+              if (allowInput) allowInput.value = allowVal;
+
+              if (allowVal && allowInput && editA) {
+                allowInput.disabled = true;
+                editA.checked = false;
+                if (allowHint) allowHint.style.display = 'block';
+              }
+
+              if (showA && allowInput) showA.onchange = () => { allowInput.type = showA.checked ? 'text' : 'password'; };
+              if (editA && allowInput) editA.onchange = () => { allowInput.disabled = !editA.checked; };
+            }
+          } catch {}
+        })();
+
+        const save = async (runAfter=false) => {
+          const t = card.querySelector('#telegramToken').value.trim();
+          const aRaw = card.querySelector('#telegramAllowFrom').value.trim();
+          const a = aRaw.replace(/\D/g, '');
+          if (a !== aRaw) card.querySelector('#telegramAllowFrom').value = a;
+
+          const patch = { telegramToken: t };
+          if (a) patch.telegramAllowFrom = a;
+
+          const ok = await saveSecretsMerged(patch, false);
+          if (!ok) return false;
+
+          if (runAfter) run('channels_setup');
+          else card.querySelector('#channelsSaved').textContent = t('channelsSaveOk');
+          return true;
+        };
+
+        card.querySelector('#btnSaveCh').onclick = () => save(false);
+        card.querySelector('#btnRunCh').onclick = () => save(true);
+
+        return;
+      }
+        if (selected !== 'done') {
+          const btn = document.createElement('button');
+          btn.textContent = t('btnRunStep');
+          btn.onclick = () => run(selected);
+          body.appendChild(btn);
+
+          const p = document.createElement('div');
+          p.className = 'muted';
+          p.style.marginTop = '10px';
+          p.textContent = t('runHint');
+          body.appendChild(p);
+        }
+
+    }
+
+    async function refreshStatus() {
+      if (!authed) return;
+      const { j, authRequired } = await api('/api/status');
+      if (authRequired || !j) return;
+      const cur = j.current;
+      if (!cur) {
+        setStatus('', t('statusIdle'));
+        return;
+      }
+      if (cur.status === 'running') setStatus('run', `${t('statusRunningPrefix')}${cur.task}`);
+      else if (cur.status === 'ok') setStatus('ok', `${t('statusDonePrefix')}${cur.task} (ok)`);
+      else if (cur.status === 'error') setStatus('err', `${t('statusFailPrefix')}${cur.task} (error)`);
+
+      currentJobId = cur.id;
+      document.getElementById('jobId').textContent = cur.id;
+      if (!evt) stream(cur.id);
+    }
+
+    function stream(id) {
+      if (evt) evt.close();
+      evt = new EventSource(`/api/stream?id=${encodeURIComponent(id)}`);
+      document.getElementById('streamState').textContent = t('streamLive');
+
+      const appendNotice = (text) => {
+        const pre = document.getElementById('log');
+        if (!pre) return;
+        const ts = new Date().toISOString().replace('T',' ').replace('Z','');
+        pre.textContent += `\n[${ts}] ${text}\n`;
+        pre.scrollTop = pre.scrollHeight;
+      };
+
+      evt.addEventListener('log', (e) => {
+        const chunk = JSON.parse(e.data);
+        const pre = document.getElementById('log');
+        pre.textContent += chunk;
+        pre.scrollTop = pre.scrollHeight;
+      });
+
+      evt.addEventListener('status', (e) => {
+        const st = JSON.parse(e.data);
+        const cur = st.current;
+        if (!cur) return;
+        if (cur.status === 'running') setStatus('run', `${t('statusRunningPrefix')}${cur.task}`);
+        else if (cur.status === 'ok') setStatus('ok', `${t('statusDonePrefix')}${cur.task} (ok)`);
+        else if (cur.status === 'error') setStatus('err', `${t('statusFailPrefix')}${cur.task} (error)`);
+
+        if (cur.status === 'ok' && cur.id && cur.id !== lastCompleteNoticeId) {
+          lastCompleteNoticeId = cur.id;
+          appendNotice('현재 단계를 완료했습니다. 다음 단계를 진행하세요.');
+        }
+
+        // Task finished → refresh progress immediately so the left steps update in near real-time
+        if (cur.status !== 'running') {
+          refreshEnv();
+        }
+      });
+
+      evt.onerror = () => { document.getElementById('streamState').textContent = t('streamError'); };
+    }
+
+    async function run(task) {
+      document.getElementById('log').textContent = '';
+      const r = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus('err', t('runFailPrefix') + (j.error || ''));
+        if (j.error === 'AUTH_REQUIRED') {
+          showAuthGate();
+        }
+        return;
+      }
+      currentJobId = j.job.id;
+      document.getElementById('jobId').textContent = j.job.id;
+      setStatus('run', `${t('statusRunningPrefix')}${j.job.task}`);
+      stream(j.job.id);
+    }
+
+    
+    async function saveSecretsMerged(patch, silent=false) {
+      // Merge patch into existing secrets.json to avoid wiping other fields.
+      let base = {};
+      try {
+        const r = await api('/api/secrets');
+        if (r && r.j && r.j.ok && r.j.secrets) base = r.j.secrets;
+      } catch {}
+
+      const merged = Object.assign({}, base, patch);
+      if (merged.extraEnv == null) merged.extraEnv = {};
+
+      const { j, authRequired } = await api('/api/save-secrets', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(merged)
+      });
+      if (authRequired) return false;
+      if (!silent && (!j || !j.ok)) {
+        const el = document.getElementById('secretsSaved') || document.getElementById('providerSaved') || document.getElementById('channelsSaved');
+        if (el) el.textContent = t('saveFailPrefix') + ((j && j.error) || '');
+      }
+      return !!(j && j.ok);
+    }
+
+async function saveSecrets(silent=false) {
+      const payload = {
+        gatewayToken: document.getElementById('gatewayToken')?.value?.trim() || '',
+        telegramToken: document.getElementById('telegramToken')?.value?.trim() || '',
+        extraEnv: {}
+      };
+
+      const { j, authRequired } = await api('/api/save-secrets', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if (authRequired) return;
+
+      if (!silent) {
+        document.getElementById('secretsSaved').textContent = j.ok
+          ? t('saveTmpOk')
+          : (t('saveFailPrefix') + (j.error||''));
+      }
+    }
+
+    async function resetWizard() {
+      const ok = confirm(t('resetConfirm'));
+      if (!ok) return;
+      const r = await fetch('/api/reset-wizard', { method:'POST' });
+      const j = await r.json();
+      const pre = document.getElementById('log');
+      pre.textContent = '';
+      if (!j.ok) {
+        setStatus('err', t('resetFail'));
+        return;
+      }
+      // Move to the first step
+      selected = 'doctor';
+      writeStepParam(selected);
+      renderPanel();
+      // Refresh progress immediately
+      await refreshEnv();
+      setStatus('ok', t('resetOk'));
+    }
+
+    async function copyLogAll() {
+      const text = document.getElementById('log').textContent || '';
+      const hint = document.getElementById('copyHint');
+      const show = (msg) => {
+        hint.textContent = msg;
+        hint.style.display = 'block';
+        setTimeout(() => (hint.style.display = 'none'), 2500);
+      };
+
+      try {
+        await navigator.clipboard.writeText(text);
+        show(t('copyOk'));
+      } catch (e) {
+        // Fallback
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          show(t('copyOk'));
+        } catch (e2) {
+          show(t('copyFail'));
+        }
+      }
+    }
+
+    let authed = false;
+    let envTimer = null;
+    let statusTimer = null;
+    let lastCompleteNoticeId = null;
+
+    async function api(path, opts={}) {
+      const r = await fetch(path, opts);
+      const j = await r.json().catch(() => ({}));
+      const authRequired = (r.status === 401) || (j && j.error === 'AUTH_REQUIRED');
+      if (authRequired) {
+        authed = false;
+        showAuthGate();
+      }
+      return { r, j, authRequired };
+    }
+
+    function showAuthGate() {
+      // Auth screen should be a clean entry point (no wizard step param / no top nav)
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('step');
+        window.history.replaceState({}, '', u);
+      } catch {}
+
+      const top = document.getElementById('topbar');
+      if (top) top.style.display = 'none';
+      document.getElementById('authGate').style.display = 'block';
+      const main = document.getElementById('mainLayout');
+      if (main) main.style.display = 'none';
+    }
+    function hideAuthGate() {
+      const top = document.getElementById('topbar');
+      if (top) top.style.display = 'block';
+      document.getElementById('authGate').style.display = 'none';
+      const main = document.getElementById('mainLayout');
+      if (main) main.style.display = 'grid';
+    }
+
+    function startPolling() {
+      if (envTimer) clearInterval(envTimer);
+      if (statusTimer) clearInterval(statusTimer);
+      refreshEnv();
+      refreshStatus();
+      envTimer = setInterval(refreshEnv, 4000);
+      statusTimer = setInterval(refreshStatus, 1200);
+    }
+
+    async function checkAuthOnLoad() {
+      const { j } = await api('/api/auth/status');
+      if (!j || !j.ok) { showAuthGate(); return; }
+
+      AUTH_STATUS = j;
+      const hint = document.getElementById('bootstrapHint');
+      if (j.bootstrapped) {
+        hint.textContent = t('bootstrapHintBootstrapped');
+        document.getElementById('btnBootstrap').disabled = true;
+      } else {
+        hint.textContent = t('bootstrapHintNotBootstrapped');
+        document.getElementById('btnBootstrap').disabled = false;
+      }
+
+      authed = !!j.authed;
+      if (!authed) { showAuthGate(); return; }
+      hideAuthGate();
+      startPolling();
+    }
+
+    async function bootstrapCode() {
+      const msg = document.getElementById('authMsg');
+      msg.textContent = '';
+      const { j } = await api('/api/auth/bootstrap', { method:'POST' });
+      if (!j.ok) {
+        if (j.error === 'ALREADY_BOOTSTRAPPED') {
+          msg.textContent = t('authAlreadyBootstrappedMsg');
+          return;
+        }
+        msg.textContent = t('authBootstrapFailPrefix') + (j.error || '');
+        return;
+      }
+      document.getElementById('bootstrapBox').style.display = 'block';
+      document.getElementById('bootstrapCode').textContent = j.code;
+      document.getElementById('btnBootstrap').disabled = true;
+      msg.textContent = t('authBootstrapRecordNotice');
+    }
+
+
+    async function login() {
+      const msg = document.getElementById('authMsg');
+      msg.textContent = '';
+
+      const code = document.getElementById('loginCode').value.trim();
+      if (!code) {
+        msg.textContent = t('authNeedCode');
+        return;
+      }
+      // Generated code is 24 chars. Allow a little slack for copy/paste issues.
+      if (code.length < 20) {
+        msg.textContent = t('authCodeTooShort');
+        return;
+      }
+
+      const { j } = await api('/api/auth/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ code })
+      });
+      if (!j.ok) {
+        if (j.error === 'WRONG') {
+          msg.textContent = t('authCodeWrong');
+        } else if (j.error === 'NOT_BOOTSTRAPPED') {
+          msg.textContent = t('authNotBootstrapped');
+        } else {
+          msg.textContent = t('authLoginFail');
+        }
+        return;
+      }
+
+      msg.textContent = t('authLoginOk');
+      authed = true;
+      hideAuthGate();
+      startPolling();
+    }
+
+    // init
+    renderSteps(new Set());
+    renderPanel();
+    writeStepParam(selected);
+    document.getElementById('btnCopyLog').onclick = copyLogAll;
+    document.getElementById('btnReset').onclick = resetWizard;
+    document.getElementById('btnBootstrap').onclick = bootstrapCode;
+    document.getElementById('btnLogin').onclick = login;
+    document.getElementById('btnLangKo').onclick = () => setLang('ko');
+    document.getElementById('btnLangEn').onclick = () => setLang('en');
+    document.getElementById('topLangKo').onclick = () => setLang('ko');
+    document.getElementById('topLangEn').onclick = () => setLang('en');
+    applyI18n();
+    applyLangUI();
+    checkAuthOnLoad();
+  </script>
+</body>
+</html>
